@@ -1,0 +1,25 @@
+{
+  "name": "@coroinha/validators",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "build": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@coroinha/contracts": "workspace:*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@coroinha/eslint-config": "workspace:*",
+    "@coroinha/typescript-config": "workspace:*",
+    "@types/node": "^26.6.5",
+    "eslint": "^9.36.0",
+    "typescript": "^5.9.2"
+  }
+}

@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Source Sans 3", "Segoe UI", sans-serif;
+  --font-serif: "Newsreader", Georgia, serif;
+  --color-navy-950: #071422;
+  --color-navy-900: #0b1f3a;
+  --color-navy-800: #143056;
+  --color-navy-700: #1d3f6e;
+  --color-gold-100: #f8f1de;
+  --color-gold-500: #c4a35a;
+  --color-gold-700: #8c6e2f;
+  --color-paper: #f3f5f8;
+  --color-ink: #142033;
+  --color-muted: #5d6b7c;
+  --color-line: #e3e8ef;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+h1,
+h2,
+.font-display {
+  font-family: var(--font-serif);
+  font-weight: 560;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c5ced8 transparent;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.page-enter {
+  animation: rise 0.35s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter {
+    animation: none;
+  }
+}
+
+@media print {
+  body {
+    background: white;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

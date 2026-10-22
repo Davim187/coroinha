@@ -1,0 +1,7 @@
+{
+  "extends": "@coroinha/typescript-config/node.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src"]
+}

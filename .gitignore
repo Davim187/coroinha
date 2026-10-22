@@ -1,0 +1,15 @@
+node_modules
+dist
+.turbo
+.env
+.env.*
+!.env.example
+coverage
+playwright-report
+test-results
+blob-report
+.data
+apps/api/src/generated
+*.tsbuildinfo
+.DS_Store
+Thumbs.db

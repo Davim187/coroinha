@@ -1,0 +1,57 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: coroinha-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: coroinha
+      POSTGRES_PASSWORD: coroinha
+      POSTGRES_DB: coroinha
+    ports:
+      - "5432:5432"
+    volumes:
+      - coroinha-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coroinha -d coroinha"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://coroinha:coroinha@db:5432/coroinha
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?defina JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?defina JWT_REFRESH_SECRET}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost}
+      API_HOST: 0.0.0.0
+      API_PORT: 3333
+      NODE_ENV: production
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      ADMIN_NAME: ${ADMIN_NAME:-Administrador}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@paroquia.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      BCRYPT_ROUNDS: 12
+    ports:
+      - "3333:3333"
+
+  web:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+
+volumes:
+  coroinha-db:
