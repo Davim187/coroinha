@@ -101,13 +101,15 @@ Os testes de integração usam o banco `coroinha_test` no mesmo PostgreSQL. Crie
 
 ## Produção com Docker
 
-Defina os segredos no ambiente e suba a pilha completa:
+No VPS da paróquia o banco continua no Postgres que já está no ar (`www-postgres-1`, rede `www_default`). O Turborepo entra em um único container, que serve a API e a interface:
 
 ```bash
-docker compose --profile full up --build
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
-Use `COOKIE_SECURE=true` somente atrás de HTTPS. Em HTTP local, mantenha `false`.
+O `.env.production` fica só no servidor. `DATABASE_URL` aponta para `www-postgres-1`, no banco `coroinha`. Use `COOKIE_SECURE=true` atrás de HTTPS. Em HTTP local, mantenha `false`.
+
+O compose da raiz, com o serviço `db`, é apenas para desenvolvimento nesta máquina.
 
 ## Segurança e privacidade
 

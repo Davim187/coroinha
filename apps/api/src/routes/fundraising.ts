@@ -147,6 +147,21 @@ export async function fundraisingRoutes(app: FastifyInstance) {
     return present(await load(app, params.id))
   })
 
+  app.delete('/api/fundraisings/:id', async (request) => {
+    const auth = actor(request)
+    assertCan(auth, 'fundraising.write')
+    const params = request.params as { id: string }
+    const current = await app.prisma.fundraisingCampaign.findUnique({ where: { id: params.id } })
+    if (!current) throw notFound('Arrecadação não encontrada.')
+    await app.prisma.$transaction(async (tx) => {
+      await tx.financialRevision.deleteMany({ where: { transaction: { campaignId: current.id } } })
+      await tx.financialTransaction.deleteMany({ where: { campaignId: current.id } })
+      await tx.fundraisingCampaign.delete({ where: { id: current.id } })
+    })
+    await audit(app.prisma, { userId: auth.id, action: 'fundraising.delete', entity: 'FundraisingCampaign', entityId: current.id, ip: request.ip })
+    return { ok: true }
+  })
+
   app.post('/api/fundraisings/:id/participants', async (request) => {
     const auth = actor(request)
     assertCan(auth, 'fundraising.write')

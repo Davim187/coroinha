@@ -279,11 +279,9 @@ function Builder({ celebration }: { celebration: CelebrationDetail }) {
           {celebration.status === 'COMPLETED' ? <Button variant="outline" onClick={() => run(async () => { await api(`/api/celebrations/${celebration.id}/reopen`, { method: 'POST' }); await client.invalidateQueries({ queryKey: ['celebration', celebration.id] }) }, 'Escala reaberta.')}>Reabrir</Button> : null}
           <Button variant="outline" onClick={() => setDuplicateOpen(true)}>Duplicar</Button>
           {celebration.status !== 'DRAFT' ? <Button asChild><Link to={`/escalas/${celebration.id}/presenca`}>Registrar presença</Link></Button> : null}
-          {celebration.status === 'DRAFT' ? (
-            <ConfirmButton title="Excluir rascunho" description="Esta celebração ainda não foi publicada e será removida." confirmLabel="Excluir" danger onConfirm={() => run(async () => { await api(`/api/celebrations/${celebration.id}`, { method: 'DELETE' }); window.location.href = '/escalas' }, 'Escala excluída.')}>
-              <Button variant="outline" type="button">Excluir</Button>
-            </ConfirmButton>
-          ) : null}
+          <ConfirmButton title="Excluir escala" description="A celebração, as funções preenchidas e as presenças serão removidas." confirmLabel="Excluir" danger onConfirm={() => run(async () => { await api(`/api/celebrations/${celebration.id}`, { method: 'DELETE' }); window.location.href = '/escalas' }, 'Escala excluída.')}>
+            <Button variant="outline" type="button">Excluir</Button>
+          </ConfirmButton>
         </Can>
       </div>
       <Dialog open={suggestOpen} onOpenChange={setSuggestOpen}>

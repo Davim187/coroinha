@@ -17,11 +17,9 @@ services:
       timeout: 5s
       retries: 20
 
-  api:
+  app:
     profiles: ["full"]
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
+    build: .
     restart: unless-stopped
     depends_on:
       db:
@@ -40,18 +38,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       BCRYPT_ROUNDS: 12
     ports:
-      - "3333:3333"
-
-  web:
-    profiles: ["full"]
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      - api
-    ports:
-      - "80:80"
+      - "80:3333"
 
 volumes:
   coroinha-db:

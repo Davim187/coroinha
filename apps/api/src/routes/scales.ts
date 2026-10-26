@@ -122,10 +122,7 @@ export async function scaleRoutes(app: FastifyInstance) {
     const auth = actor(request)
     assertCan(auth, 'scales.write')
     const params = request.params as { id: string }
-    const current = await getCelebration(app.prisma, params.id)
-    if (current.status !== 'DRAFT') {
-      throw new ApiError(409, 'LOCKED', 'Somente escalas em preparação podem ser excluídas.')
-    }
+    await getCelebration(app.prisma, params.id)
     await app.prisma.celebration.delete({ where: { id: params.id } })
     await audit(app.prisma, {
       userId: auth.id,

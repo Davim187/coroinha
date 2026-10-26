@@ -1,0 +1,16 @@
+node_modules
+**/node_modules
+dist
+**/dist
+.git
+.turbo
+coverage
+playwright-report
+test-results
+blob-report
+.data
+apps/api/src/generated
+.env
+.env.*
+!.env.example
+*.md

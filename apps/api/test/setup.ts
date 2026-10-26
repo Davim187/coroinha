@@ -13,6 +13,7 @@ beforeEach(async () => {
       "Celebration",
       "RaffleBlockEvent",
       "RaffleBlock",
+      "RaffleBatch",
       "RaffleCampaign",
       "FinancialRevision",
       "FinancialTransaction",

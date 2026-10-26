@@ -8,7 +8,7 @@ import type { Resolver } from 'react-hook-form'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Can, CoroinhaPicker, EmptyState, Field, PageHeader, Panel, Pager, QueryBoundary, SearchBox, StatusBadge } from '@/components/common'
+import { Can, ConfirmButton, CoroinhaPicker, EmptyState, Field, PageHeader, Panel, Pager, QueryBoundary, SearchBox, StatusBadge } from '@/components/common'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input, Select, Textarea } from '@/components/ui/input'
@@ -119,6 +119,7 @@ export function FundraisingFormPage() {
 
 export function FundraisingDetailPage() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const client = useQueryClient()
   const query = useQuery({ queryKey: ['fundraising', id], queryFn: () => api<FundraisingDetail>(`/api/fundraisings/${id}`) })
   const [person, setPerson] = useState<{ id: string; name: string } | null>(null)
@@ -131,7 +132,7 @@ export function FundraisingDetailPage() {
     <QueryBoundary isLoading={query.isLoading} isError={query.isError} error={query.error} refetch={() => query.refetch()}>
       {campaign ? (
         <div>
-          <PageHeader title={campaign.name} description={campaign.description || campaign.category} actions={<><Button asChild variant="outline"><Link to={`/arrecadacoes/${campaign.id}/editar`}>Editar</Link></Button><Button variant="outline" onClick={() => downloadFile(`/api/fundraisings/${campaign.id}/export.csv`, 'arrecadacao.csv')}>CSV</Button><Button variant="outline" onClick={() => downloadFile(`/api/fundraisings/${campaign.id}/export.pdf`, 'arrecadacao.pdf')}>PDF</Button></>} />
+          <PageHeader title={campaign.name} description={campaign.description || campaign.category} actions={<><Button asChild variant="outline"><Link to={`/arrecadacoes/${campaign.id}/editar`}>Editar</Link></Button><Button variant="outline" onClick={() => downloadFile(`/api/fundraisings/${campaign.id}/export.csv`, 'arrecadacao.csv')}>CSV</Button><Button variant="outline" onClick={() => downloadFile(`/api/fundraisings/${campaign.id}/export.pdf`, 'arrecadacao.pdf')}>PDF</Button><Can permission="fundraising.write"><ConfirmButton title="Excluir arrecadação" description="A campanha, os participantes e os lançamentos serão removidos." confirmLabel="Excluir" danger onConfirm={async () => { try { await api(`/api/fundraisings/${campaign.id}`, { method: 'DELETE' }); await client.invalidateQueries({ queryKey: ['fundraisings'] }); toast.success('Arrecadação excluída.'); navigate('/arrecadacoes') } catch (error) { toast.error(error instanceof ApiError ? error.message : 'Não foi possível excluir a arrecadação.') } }}><Button variant="outline" type="button">Excluir</Button></ConfirmButton></Can></>} />
           <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <Metric label="Entradas" value={formatMoney(campaign.totals.income)} />
             <Metric label="Saídas" value={formatMoney(campaign.totals.expense)} />

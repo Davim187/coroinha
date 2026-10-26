@@ -121,6 +121,10 @@ describe('fluxos integrados', () => {
       },
     })
     expect(attendance.statusCode).toBe(200)
+    const removed = await app.inject({ method: 'DELETE', url: `/api/celebrations/${celebration.json().id}`, headers })
+    expect(removed.statusCode).toBe(200)
+    const gone = await app.inject({ method: 'GET', url: `/api/celebrations/${celebration.json().id}`, headers })
+    expect(gone.statusCode).toBe(404)
   })
 
   it('controla bloco de rifa e conta participantes da arrecadação', async () => {
@@ -140,7 +144,10 @@ describe('fluxos integrados', () => {
         name: 'Rifa da páscoa',
         prize: 'Cesta',
         unitPrice: '2,50',
-        totalNumbers: 30,
+        blockCount: 3,
+        miniBlockSize: 10,
+        firstNumber: 21,
+        firstBlock: 1,
         startsAt: '2026-03-01',
         endsAt: '2026-03-20',
         status: 'ACTIVE',
@@ -157,9 +164,14 @@ describe('fluxos integrados', () => {
       method: 'POST',
       url: `/api/raffles/${raffle.json().id}/blocks`,
       headers,
-      payload: { label: 'A', participantName: 'Carla Mendes', coroinhaId: person.json().id, quantity: 20, soldQuantity: 10, unsoldQuantity: 5, amountReceived: '20,00' },
+      payload: { label: 'A', participantName: 'Carla Mendes', coroinhaId: person.json().id, quantity: 10, soldQuantity: 10, unsoldQuantity: 0, amountReceived: '20,00' },
     })
-    expect(block.json().summary.available).toBe(10)
+    expect(block.json().summary.available).toBe(20)
+    expect(block.json().joinedBlocks).toHaveLength(3)
+    expect(block.json().joinedBlocks[0].soldQuantity).toBe(10)
+    expect(block.json().joinedBlocks[0].startNumber).toBe(21)
+    expect(block.json().blocks[0].startNumber).toBe(21)
+    expect(block.json().blocks[0].endNumber).toBe(30)
     expect(block.json().summary.pendingAmount).toBe('5.00')
     const campaign = await app.inject({
       method: 'POST',
@@ -186,5 +198,14 @@ describe('fluxos integrados', () => {
     })
     expect(meeting.statusCode).toBe(200)
     expect(meeting.json().soon).toBe(false)
+    const removedRaffle = await app.inject({ method: 'DELETE', url: `/api/raffles/${raffle.json().id}`, headers })
+    expect(removedRaffle.statusCode).toBe(200)
+    const removedFundraising = await app.inject({ method: 'DELETE', url: `/api/fundraisings/${campaign.json().id}`, headers })
+    expect(removedFundraising.statusCode).toBe(200)
+    const removedMeeting = await app.inject({ method: 'DELETE', url: `/api/meetings/${meeting.json().id}`, headers })
+    expect(removedMeeting.statusCode).toBe(200)
+    expect((await app.inject({ method: 'GET', url: `/api/raffles/${raffle.json().id}`, headers })).statusCode).toBe(404)
+    expect((await app.inject({ method: 'GET', url: `/api/fundraisings/${campaign.json().id}`, headers })).statusCode).toBe(404)
+    expect((await app.inject({ method: 'GET', url: `/api/meetings/${meeting.json().id}`, headers })).statusCode).toBe(404)
   })
 })

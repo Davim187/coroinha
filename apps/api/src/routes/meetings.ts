@@ -183,4 +183,15 @@ export async function meetingRoutes(app: FastifyInstance) {
     })
     return present(meeting)
   })
+
+  app.delete('/api/meetings/:id', async (request) => {
+    const auth = actor(request)
+    assertCan(auth, 'meetings.write')
+    const params = request.params as { id: string }
+    const current = await app.prisma.meeting.findUnique({ where: { id: params.id } })
+    if (!current) throw notFound('Reunião não encontrada.')
+    await app.prisma.meeting.delete({ where: { id: current.id } })
+    await audit(app.prisma, { userId: auth.id, action: 'meeting.delete', entity: 'Meeting', entityId: current.id, ip: request.ip })
+    return { ok: true }
+  })
 }

@@ -39,6 +39,7 @@ export const env = {
   adminName: process.env.ADMIN_NAME?.trim() || 'Administrador',
   adminEmail: process.env.ADMIN_EMAIL?.trim().toLowerCase() || '',
   adminPassword: process.env.ADMIN_PASSWORD || '',
+  webDist: process.env.WEB_DIST?.trim() || '',
 }
 
 if (env.jwtAccessSecret.length < 16 || env.jwtRefreshSecret.length < 16) {

@@ -300,12 +300,68 @@ export type RaffleListItem = {
   summary: RaffleSummary
 }
 
+export type JoinedRaffleBlock = {
+  label: string
+  blockNumber: number
+  startNumber: number
+  endNumber: number
+  quantity: number
+  soldQuantity: number
+  unsoldQuantity: number
+  amountReceived: string
+  pendingAmount: string
+  status: RaffleBlockStatus
+}
+
+export type RaffleAccountabilityLine = {
+  coroinhaId: string | null
+  name: string
+  blocks: { label: string; startNumber: number; endNumber: number; quantity: number; soldQuantity: number; unsoldQuantity: number }[]
+  quantity: number
+  soldQuantity: number
+  unsoldQuantity: number
+  expectedAmount: string
+  receivedAmount: string
+  pendingAmount: string
+}
+
+export type RaffleAccountability = {
+  lines: RaffleAccountabilityLine[]
+  soldQuantity: number
+  unsoldQuantity: number
+  expectedAmount: string
+  receivedAmount: string
+  pendingAmount: string
+}
+
+export type RaffleBatchView = {
+  id: string
+  blockCount: number
+  miniBlockSize: number
+  firstNumber: number
+  firstBlock: number
+  totalNumbers: number
+}
+
+export type PlannedMiniBlock = {
+  label: string
+  quantity: number
+  startNumber: number
+  endNumber: number
+  originalBlockStart: number
+  originalBlockEnd: number
+}
+
 export type RaffleBlockView = {
   id: string
   label: string
   coroinhaId: string | null
   participantName: string
   quantity: number
+  startNumber: number
+  endNumber: number
+  originalBlockStart: number
+  originalBlockEnd: number
   soldQuantity: number
   unsoldQuantity: number
   unsoldReturned: boolean
@@ -319,11 +375,19 @@ export type RaffleBlockView = {
 export type RaffleDetail = Omit<RaffleListItem, 'summary'> & {
   description: string | null
   unitPrice: string
+  blockCount: number
+  miniBlockSize: number
+  firstNumber: number
+  firstBlock: number
   totalNumbers: number
   drawAt: string | null
   notes: string | null
   summary: RaffleSummary
+  batches: RaffleBatchView[]
   blocks: RaffleBlockView[]
+  plannedMiniBlocks: PlannedMiniBlock[]
+  joinedBlocks: JoinedRaffleBlock[]
+  accountability: RaffleAccountability
 }
 
 export type FundraisingListItem = {

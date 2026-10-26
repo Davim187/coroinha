@@ -1,8 +1,11 @@
 import { DEFAULT_PERMISSIONS } from '@coroinha/contracts'
-import { passwordSchema } from '@coroinha/validators'
 import type { PrismaClient } from '@prisma/client'
 import { hashPassword } from './auth.js'
 import { env } from './config.js'
+
+function initialAdminPasswordAccepted(password: string) {
+  return password.length >= 8 && /[A-Za-zÀ-ÿ]/.test(password) && /[0-9]/.test(password)
+}
 
 export async function ensureSettings(prisma: PrismaClient) {
   await prisma.setting.upsert({
@@ -17,13 +20,13 @@ export async function ensureAdmin(prisma: PrismaClient, mode: 'bootstrap' | 'see
     console.log('ADMIN_EMAIL ou ADMIN_PASSWORD não definidos. Nenhum administrador foi criado.')
     return
   }
-  if (!passwordSchema.safeParse(env.adminPassword).success) {
-    throw new Error('ADMIN_PASSWORD deve ter ao menos 10 caracteres, com letras e números.')
-  }
   const existing = await prisma.user.findUnique({ where: { email: env.adminEmail } })
   if (existing) {
     console.log('O administrador inicial já existe. Nenhuma senha foi alterada.')
     return
+  }
+  if (!initialAdminPasswordAccepted(env.adminPassword)) {
+    throw new Error('ADMIN_PASSWORD deve ter ao menos 8 caracteres, com letras e números.')
   }
   if (mode === 'bootstrap' && (await prisma.user.count()) > 0) return
 

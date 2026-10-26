@@ -143,17 +143,27 @@ export const attendanceSchema = z.object({
   items: z.array(attendanceItemSchema).min(1, 'Não há coroinhas escalados para registrar.'),
 })
 
+export const raffleBatchSchema = z.object({
+  blockCount: z.number().int().positive('Informe a quantidade de blocos.'),
+  miniBlockSize: z.number().int().min(1, 'O minibloco precisa ter ao menos uma rifa.').max(10, 'O minibloco pode ter no máximo 10 rifas.'),
+  firstNumber: z.number().int().positive('Informe o número em que estes blocos começam.'),
+  firstBlock: z.number().int().positive('Informe o bloco original em que estes blocos começam.'),
+})
+
 export const raffleBodySchema = z
   .object({
     name: z.string().trim().min(3, 'Informe o nome da rifa.').max(160),
     description: optionalText(2000),
     prize: z.string().trim().min(2, 'Informe o prêmio.').max(200),
     unitPrice: moneySchema,
-    totalNumbers: z.number().int().positive('Informe a quantidade de números.'),
+    blockCount: z.number().int().positive('Informe a quantidade de blocos.'),
+    miniBlockSize: z.number().int().min(1, 'O minibloco precisa ter ao menos uma rifa.').max(10, 'O minibloco pode ter no máximo 10 rifas.'),
+    firstNumber: z.number().int().positive('Informe o número em que a rifa começa.'),
+    firstBlock: z.number().int().positive('Informe o bloco original em que a rifa começa.'),
     startsAt: dateSchema,
     endsAt: dateSchema,
-    drawAt: dateSchema.nullable().optional(),
-    goalAmount: moneySchema.nullable().optional(),
+    drawAt: z.preprocess(blankToNull, dateSchema.nullable().optional()),
+    goalAmount: z.preprocess(blankToNull, moneySchema.nullable().optional()),
     notes: optionalText(2000),
     status: z.enum(RAFFLE_STATUSES),
   })
@@ -173,6 +183,10 @@ export const raffleBodySchema = z
       })
     }
   })
+
+export const raffleAssignSchema = z.object({
+  coroinhaId: z.string().min(1).nullable(),
+})
 
 export const raffleBlockSchema = z.object({
   label: z.string().trim().min(1, 'Identifique o bloco.').max(40),

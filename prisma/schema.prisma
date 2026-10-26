@@ -206,9 +206,13 @@ model RaffleCampaign {
   name         String
   description  String?
   prize        String
-  unitPrice    Decimal      @db.Decimal(12, 2)
-  totalNumbers Int
-  startsAt     DateTime     @db.Date
+  unitPrice     Decimal      @db.Decimal(12, 2)
+  blockCount    Int
+  miniBlockSize Int
+  firstNumber   Int      @default(1)
+  firstBlock    Int      @default(1)
+  totalNumbers  Int
+  startsAt      DateTime     @db.Date
   endsAt       DateTime     @db.Date
   drawAt       DateTime?    @db.Date
   goalAmount   Decimal?     @db.Decimal(12, 2)
@@ -216,15 +220,32 @@ model RaffleCampaign {
   status       RaffleStatus @default(DRAFT)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
+  batches      RaffleBatch[]
   blocks       RaffleBlock[]
 
   @@index([status])
+}
+
+model RaffleBatch {
+  id            String         @id @default(cuid())
+  campaignId    String
+  campaign      RaffleCampaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  blockCount    Int
+  miniBlockSize Int
+  firstNumber   Int
+  firstBlock    Int
+  createdAt     DateTime       @default(now())
+  blocks        RaffleBlock[]
+
+  @@index([campaignId])
 }
 
 model RaffleBlock {
   id              String            @id @default(cuid())
   campaignId      String
   campaign        RaffleCampaign    @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  batchId         String
+  batch           RaffleBatch       @relation(fields: [batchId], references: [id], onDelete: Restrict)
   label           String
   coroinhaId      String?
   coroinha        Coroinha?         @relation(fields: [coroinhaId], references: [id], onDelete: Restrict)
@@ -242,6 +263,7 @@ model RaffleBlock {
 
   @@unique([campaignId, label])
   @@index([campaignId])
+  @@index([batchId])
   @@index([coroinhaId])
 }
 

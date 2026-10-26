@@ -1,8 +1,10 @@
+import { resolve } from 'node:path'
 import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import jwt from '@fastify/jwt'
 import rateLimit from '@fastify/rate-limit'
+import fastifyStatic from '@fastify/static'
 import { Prisma } from '@prisma/client'
 import { PrismaClient } from '@prisma/client'
 import Fastify from 'fastify'
@@ -36,12 +38,13 @@ export async function buildApp(options?: { logger?: boolean }) {
   await app.register(cookie, { secret: env.jwtRefreshSecret })
   await app.register(jwt, { secret: env.jwtAccessSecret, sign: { expiresIn: '15m' } })
   if (env.nodeEnv !== 'test') {
-    await app.register(rateLimit, { global: true, max: 300, timeWindow: '1 minute' })
+    await app.register(rateLimit, {
+      global: true,
+      max: 300,
+      timeWindow: '1 minute',
+      allowList: (request) => !request.url.startsWith('/api/'),
+    })
   }
-
-  app.setNotFoundHandler((_request, reply) => {
-    reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Recurso não encontrado.', details: null } })
-  })
 
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof ApiError) {
@@ -69,6 +72,7 @@ export async function buildApp(options?: { logger?: boolean }) {
 
   app.addHook('onRequest', async (request) => {
     const url = request.url.split('?')[0] ?? request.url
+    if (!url.startsWith('/api/')) return
     const isPublic =
       (request.method === 'GET' && url === '/api/health') ||
       (request.method === 'POST' &&
@@ -86,5 +90,18 @@ export async function buildApp(options?: { logger?: boolean }) {
   await meetingRoutes(app)
   await dashboardRoutes(app)
   await reportRoutes(app)
+
+  if (env.webDist) {
+    await app.register(fastifyStatic, { root: resolve(env.webDist), wildcard: false })
+  }
+
+  app.setNotFoundHandler((request, reply) => {
+    const url = request.url.split('?')[0] ?? request.url
+    if (env.webDist && request.method === 'GET' && !url.startsWith('/api/')) {
+      return reply.sendFile('index.html')
+    }
+    return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Recurso não encontrado.', details: null } })
+  })
+
   return app
 }

@@ -144,6 +144,10 @@ export async function reportRoutes(app: FastifyInstance) {
     const items = rows.map((campaign) => ({
       nome: campaign.name,
       situacao: RAFFLE_STATUS_LABELS[campaign.status],
+      blocos: campaign.totalNumbers / 10,
+      blocoInicial: campaign.firstBlock,
+      numeroInicial: campaign.firstNumber,
+      minibloco: campaign.miniBlockSize,
       numeros: campaign.totalNumbers,
       vendidos: campaign.blocks.reduce((sum, block) => sum + block.soldQuantity, 0),
       recebido: money(
@@ -155,8 +159,8 @@ export async function reportRoutes(app: FastifyInstance) {
         reply,
         'rifas.csv',
         csv(
-          ['Nome', 'Situação', 'Números', 'Vendidos', 'Recebido'],
-          items.map((item) => [item.nome, item.situacao, item.numeros, item.vendidos, item.recebido]),
+          ['Nome', 'Situação', 'Blocos', 'Bloco inicial', 'Número inicial', 'Minibloco', 'Números', 'Vendidos', 'Recebido'],
+          items.map((item) => [item.nome, item.situacao, item.blocos, item.blocoInicial, item.numeroInicial, item.minibloco, item.numeros, item.vendidos, item.recebido]),
         ),
       )
     }

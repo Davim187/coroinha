@@ -24,14 +24,14 @@ async function main() {
     return
   }
 
-  if (password.length < 10 || !/[A-Za-zÀ-ÿ]/.test(password) || !/[0-9]/.test(password)) {
-    throw new Error('ADMIN_PASSWORD deve ter ao menos 10 caracteres, com letras e números.')
-  }
-
   const existing = await prisma.user.findUnique({ where: { email } })
   if (existing) {
     console.log('O administrador inicial já existe. Nenhuma senha foi alterada.')
     return
+  }
+
+  if (password.length < 8 || !/[A-Za-zÀ-ÿ]/.test(password) || !/[0-9]/.test(password)) {
+    throw new Error('ADMIN_PASSWORD deve ter ao menos 8 caracteres, com letras e números.')
   }
 
   const rounds = Number(process.env.BCRYPT_ROUNDS || 12)

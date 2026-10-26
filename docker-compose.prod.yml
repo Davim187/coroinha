@@ -1,0 +1,36 @@
+# Produção no VPS da paróquia. Um container só: o Turborepo gera API e interface.
+# O Postgres continua no container www-postgres-1, na rede www_default.
+name: coroinha
+
+services:
+  app:
+    build: .
+    image: coroinha
+    container_name: coroinha
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      NODE_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: 3333
+    ports:
+      - "127.0.0.1:8083:3333"
+    networks:
+      - paroquia
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3333/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 40s
+
+networks:
+  paroquia:
+    external: true
+    name: www_default
