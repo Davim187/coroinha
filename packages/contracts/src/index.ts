@@ -427,6 +427,8 @@ export type MeetingSummary = {
   location: string | null
   status: MeetingStatus
   soon: boolean
+  attendanceCounted: number
+  attendanceTotal: number
 }
 
 export type MeetingDetail = MeetingSummary & {
@@ -435,6 +437,21 @@ export type MeetingDetail = MeetingSummary & {
   decisions: string | null
   organizer: { id: string; name: string }
   participants: { id: string; userId: string | null; name: string }[]
+}
+
+export type MeetingAttendanceItem = {
+  coroinhaId: string
+  coroinhaName: string
+  status: AttendanceStatus | null
+  notes: string | null
+}
+
+export type MeetingAttendanceView = {
+  meetingId: string
+  title: string
+  date: string
+  status: MeetingStatus
+  items: MeetingAttendanceItem[]
 }
 
 export type DashboardData = {

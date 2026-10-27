@@ -11,7 +11,7 @@ import { CoroinhaDetailPage, CoroinhaFormPage, CoroinhasPage } from '@/pages/cor
 import { DashboardPage } from '@/pages/dashboard'
 import { FundraisingDetailPage, FundraisingFormPage, FundraisingPage } from '@/pages/fundraising'
 import { LoginPage } from '@/pages/login'
-import { AgendaPage, MeetingDetailPage, MeetingFormPage } from '@/pages/meetings'
+import { AgendaPage, MeetingAttendancePage, MeetingDetailPage, MeetingFormPage } from '@/pages/meetings'
 import { PrintScalePage } from '@/pages/print'
 import { RafflesPage, RaffleDetailPage, RaffleFormPage } from '@/pages/raffles'
 import { ReportsPage } from '@/pages/reports'
@@ -69,6 +69,7 @@ const router = createBrowserRouter([
       { path: 'agenda/nova', element: <MeetingFormPage /> },
       { path: 'agenda/:id', element: <MeetingDetailPage /> },
       { path: 'agenda/:id/editar', element: <MeetingFormPage /> },
+      { path: 'agenda/:id/presenca', element: <MeetingAttendancePage /> },
       { path: 'usuarios', element: <UsersPage /> },
       { path: 'relatorios', element: <ReportsPage /> },
       { path: 'configuracoes', element: <SettingsPage /> },

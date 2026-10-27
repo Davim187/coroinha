@@ -89,12 +89,13 @@ model User {
   updatedAt       DateTime         @updatedAt
   sessions        Session[]
   audits          AuditLog[]
-  attendances     Attendance[]
-  transactions    FinancialTransaction[]
-  revisions       FinancialRevision[]
-  meetings        Meeting[]
-  meetingLinks    MeetingParticipant[]
-  blockEvents     RaffleBlockEvent[]
+  attendances         Attendance[]
+  meetingAttendances  MeetingAttendance[]
+  transactions        FinancialTransaction[]
+  revisions           FinancialRevision[]
+  meetings            Meeting[]
+  meetingLinks        MeetingParticipant[]
+  blockEvents         RaffleBlockEvent[]
 }
 
 model Session {
@@ -124,10 +125,11 @@ model Coroinha {
   archivedAt    DateTime?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
-  assignments   ScaleAssignment[]
-  participants  FundraisingParticipant[]
-  contributions FinancialTransaction[]
-  blocks        RaffleBlock[]
+  assignments         ScaleAssignment[]
+  participants        FundraisingParticipant[]
+  contributions       FinancialTransaction[]
+  blocks              RaffleBlock[]
+  meetingAttendances  MeetingAttendance[]
 
   @@index([fullName])
   @@index([status, archivedAt])
@@ -361,6 +363,7 @@ model Meeting {
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
   participants MeetingParticipant[]
+  attendances  MeetingAttendance[]
 
   @@index([date, status])
 }
@@ -375,6 +378,23 @@ model MeetingParticipant {
 
   @@unique([meetingId, name])
   @@index([userId])
+}
+
+model MeetingAttendance {
+  id           String           @id @default(cuid())
+  meetingId    String
+  meeting      Meeting          @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  coroinhaId   String
+  coroinha     Coroinha         @relation(fields: [coroinhaId], references: [id], onDelete: Restrict)
+  status       AttendanceStatus
+  notes        String?
+  recordedById String
+  recordedBy   User             @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+  recordedAt   DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([meetingId, coroinhaId])
+  @@index([coroinhaId])
 }
 
 model AuditLog {

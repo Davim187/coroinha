@@ -143,6 +143,17 @@ export const attendanceSchema = z.object({
   items: z.array(attendanceItemSchema).min(1, 'Não há coroinhas escalados para registrar.'),
 })
 
+export const meetingAttendanceItemSchema = z.object({
+  coroinhaId: z.string().min(1),
+  status: z.enum(ATTENDANCE_STATUSES),
+  notes: optionalText(500),
+})
+
+export const meetingAttendanceSchema = z.object({
+  items: z.array(meetingAttendanceItemSchema).min(1, 'Não há coroinhas para registrar.'),
+  markHeld: z.boolean().optional(),
+})
+
 export const raffleBatchSchema = z.object({
   blockCount: z.number().int().positive('Informe a quantidade de blocos.'),
   miniBlockSize: z.number().int().min(1, 'O minibloco precisa ter ao menos uma rifa.').max(10, 'O minibloco pode ter no máximo 10 rifas.'),

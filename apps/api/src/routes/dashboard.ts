@@ -119,6 +119,8 @@ export async function dashboardRoutes(app: FastifyInstance) {
         location: meeting.location,
         status: meeting.status,
         soon: true,
+        attendanceCounted: 0,
+        attendanceTotal: coroinhasActive,
       })),
       attendanceChart: attendanceRows
         .slice()

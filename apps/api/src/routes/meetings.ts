@@ -1,10 +1,18 @@
-import type { MeetingDetail, MeetingSummary } from '@coroinha/contracts'
-import { listQuerySchema, meetingBodySchema } from '@coroinha/validators'
+import type { MeetingAttendanceView, MeetingDetail, MeetingSummary } from '@coroinha/contracts'
+import { listQuerySchema, meetingAttendanceSchema, meetingBodySchema } from '@coroinha/validators'
 import type { Prisma } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
 import { addDays, asDate, clean, dateOnly, todayInBrazil } from '../domain.js'
 import { ApiError, notFound } from '../errors.js'
 import { actor, assertCan, audit, paging, parse } from '../http.js'
+
+const meetingInclude = {
+  organizer: true,
+  participants: true,
+  attendances: true,
+} satisfies Prisma.MeetingInclude
+
+type MeetingRecord = Prisma.MeetingGetPayload<{ include: typeof meetingInclude }>
 
 function soon(date: string, status: string) {
   if (status !== 'SCHEDULED') return false
@@ -13,7 +21,11 @@ function soon(date: string, status: string) {
   return date === today || date === tomorrow
 }
 
-function present(meeting: Prisma.MeetingGetPayload<{ include: { organizer: true; participants: true } }>): MeetingDetail {
+async function activeCoroinhaCount(app: FastifyInstance) {
+  return app.prisma.coroinha.count({ where: { status: 'ACTIVE', archivedAt: null } })
+}
+
+function present(meeting: MeetingRecord, totalCoroinhas: number): MeetingDetail {
   const date = dateOnly(meeting.date)
   return {
     id: meeting.id,
@@ -24,12 +36,39 @@ function present(meeting: Prisma.MeetingGetPayload<{ include: { organizer: true;
     location: meeting.location,
     status: meeting.status,
     soon: soon(date, meeting.status),
+    attendanceCounted: meeting.attendances.length,
+    attendanceTotal: totalCoroinhas,
     agenda: meeting.agenda,
     notes: meeting.notes,
     decisions: meeting.decisions,
     organizer: { id: meeting.organizer.id, name: meeting.organizer.name },
     participants: meeting.participants.map((item) => ({ id: item.id, userId: item.userId, name: item.name })),
   }
+}
+
+function summaryOf(meeting: MeetingRecord, totalCoroinhas: number): MeetingSummary {
+  const detail = present(meeting, totalCoroinhas)
+  return {
+    id: detail.id,
+    title: detail.title,
+    date: detail.date,
+    startTime: detail.startTime,
+    endTime: detail.endTime,
+    location: detail.location,
+    status: detail.status,
+    soon: detail.soon,
+    attendanceCounted: detail.attendanceCounted,
+    attendanceTotal: detail.attendanceTotal,
+  }
+}
+
+async function loadMeeting(app: FastifyInstance, id: string) {
+  const meeting = await app.prisma.meeting.findUnique({
+    where: { id },
+    include: meetingInclude,
+  })
+  if (!meeting) throw notFound('Reunião não encontrada.')
+  return meeting
 }
 
 export async function meetingRoutes(app: FastifyInstance) {
@@ -51,24 +90,22 @@ export async function meetingRoutes(app: FastifyInstance) {
       if (query.from) where.date.gte = asDate(query.from)
       if (query.to) where.date.lte = asDate(query.to)
     }
-    const rows = await app.prisma.meeting.findMany({
-      where,
-      include: { organizer: true, participants: true },
-      orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
-    })
-    const items: MeetingSummary[] = rows.map((row) => {
-      const detail = present(row)
-      return {
-        id: detail.id,
-        title: detail.title,
-        date: detail.date,
-        startTime: detail.startTime,
-        endTime: detail.endTime,
-        location: detail.location,
-        status: detail.status,
-        soon: detail.soon,
-      }
-    })
+    if (query.when === 'upcoming') {
+      where.date = { ...(where.date as Prisma.DateTimeFilter | undefined), gte: asDate(todayInBrazil()) }
+      where.status = where.status ?? { in: ['SCHEDULED', 'HELD'] }
+    }
+    if (query.when === 'past') {
+      where.date = { ...(where.date as Prisma.DateTimeFilter | undefined), lt: asDate(todayInBrazil()) }
+    }
+    const [rows, totalCoroinhas] = await Promise.all([
+      app.prisma.meeting.findMany({
+        where,
+        include: meetingInclude,
+        orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+      }),
+      activeCoroinhaCount(app),
+    ])
+    const items = rows.map((row) => summaryOf(row, totalCoroinhas))
     const { page, pageSize, skip } = paging(query)
     return { items: items.slice(skip, skip + pageSize), page, pageSize, total: items.length }
   })
@@ -105,23 +142,16 @@ export async function meetingRoutes(app: FastifyInstance) {
       },
     })
     await audit(app.prisma, { userId: auth.id, action: 'meeting.create', entity: 'Meeting', entityId: created.id, ip: request.ip })
-    const meeting = await app.prisma.meeting.findUniqueOrThrow({
-      where: { id: created.id },
-      include: { organizer: true, participants: true },
-    })
-    return present(meeting)
+    const meeting = await loadMeeting(app, created.id)
+    return present(meeting, await activeCoroinhaCount(app))
   })
 
   app.get('/api/meetings/:id', async (request) => {
     const auth = actor(request)
     assertCan(auth, 'meetings.read')
     const params = request.params as { id: string }
-    const meeting = await app.prisma.meeting.findUnique({
-      where: { id: params.id },
-      include: { organizer: true, participants: true },
-    })
-    if (!meeting) throw notFound('Reunião não encontrada.')
-    return present(meeting)
+    const meeting = await loadMeeting(app, params.id)
+    return present(meeting, await activeCoroinhaCount(app))
   })
 
   app.patch('/api/meetings/:id', async (request) => {
@@ -162,11 +192,8 @@ export async function meetingRoutes(app: FastifyInstance) {
       })
     })
     await audit(app.prisma, { userId: auth.id, action: 'meeting.update', entity: 'Meeting', entityId: current.id, ip: request.ip })
-    const meeting = await app.prisma.meeting.findUniqueOrThrow({
-      where: { id: current.id },
-      include: { organizer: true, participants: true },
-    })
-    return present(meeting)
+    const meeting = await loadMeeting(app, current.id)
+    return present(meeting, await activeCoroinhaCount(app))
   })
 
   app.post('/api/meetings/:id/cancel', async (request) => {
@@ -177,11 +204,8 @@ export async function meetingRoutes(app: FastifyInstance) {
     if (!current) throw notFound('Reunião não encontrada.')
     await app.prisma.meeting.update({ where: { id: current.id }, data: { status: 'CANCELLED' } })
     await audit(app.prisma, { userId: auth.id, action: 'meeting.cancel', entity: 'Meeting', entityId: current.id, ip: request.ip })
-    const meeting = await app.prisma.meeting.findUniqueOrThrow({
-      where: { id: current.id },
-      include: { organizer: true, participants: true },
-    })
-    return present(meeting)
+    const meeting = await loadMeeting(app, current.id)
+    return present(meeting, await activeCoroinhaCount(app))
   })
 
   app.delete('/api/meetings/:id', async (request) => {
@@ -192,6 +216,95 @@ export async function meetingRoutes(app: FastifyInstance) {
     if (!current) throw notFound('Reunião não encontrada.')
     await app.prisma.meeting.delete({ where: { id: current.id } })
     await audit(app.prisma, { userId: auth.id, action: 'meeting.delete', entity: 'Meeting', entityId: current.id, ip: request.ip })
+    return { ok: true }
+  })
+
+  app.get('/api/meetings/:id/attendance', async (request) => {
+    const auth = actor(request)
+    assertCan(auth, 'meetings.read')
+    const params = request.params as { id: string }
+    const meeting = await app.prisma.meeting.findUnique({
+      where: { id: params.id },
+      include: { attendances: true },
+    })
+    if (!meeting) throw notFound('Reunião não encontrada.')
+    const coroinhas = await app.prisma.coroinha.findMany({
+      where: { status: 'ACTIVE', archivedAt: null },
+      orderBy: { fullName: 'asc' },
+    })
+    const byId = new Map(meeting.attendances.map((item) => [item.coroinhaId, item]))
+    const payload: MeetingAttendanceView = {
+      meetingId: meeting.id,
+      title: meeting.title,
+      date: dateOnly(meeting.date),
+      status: meeting.status,
+      items: coroinhas.map((person) => {
+        const row = byId.get(person.id)
+        return {
+          coroinhaId: person.id,
+          coroinhaName: person.fullName,
+          status: row?.status ?? null,
+          notes: row?.notes ?? null,
+        }
+      }),
+    }
+    return payload
+  })
+
+  app.put('/api/meetings/:id/attendance', async (request) => {
+    const auth = actor(request)
+    assertCan(auth, 'meetings.write')
+    const params = request.params as { id: string }
+    const body = parse(meetingAttendanceSchema, request.body)
+    const meeting = await app.prisma.meeting.findUnique({ where: { id: params.id } })
+    if (!meeting) throw notFound('Reunião não encontrada.')
+    if (meeting.status === 'CANCELLED') {
+      throw new ApiError(409, 'LOCKED', 'Não é possível registrar presença em reunião cancelada.')
+    }
+    const coroinhas = await app.prisma.coroinha.findMany({
+      where: { status: 'ACTIVE', archivedAt: null },
+      select: { id: true },
+    })
+    const allowed = new Set(coroinhas.map((item) => item.id))
+    const received = new Set(body.items.map((item) => item.coroinhaId))
+    if (received.size !== body.items.length) {
+      throw new ApiError(422, 'VALIDATION', 'Há coroinhas repetidos na presença.')
+    }
+    for (const id of received) {
+      if (!allowed.has(id)) throw new ApiError(422, 'VALIDATION', 'Selecione apenas coroinhas ativos.')
+    }
+    if (allowed.size !== received.size || [...allowed].some((id) => !received.has(id))) {
+      throw new ApiError(422, 'VALIDATION', 'Registre a presença de todos os coroinhas ativos.')
+    }
+    await app.prisma.$transaction(async (tx) => {
+      for (const item of body.items) {
+        await tx.meetingAttendance.upsert({
+          where: { meetingId_coroinhaId: { meetingId: meeting.id, coroinhaId: item.coroinhaId } },
+          create: {
+            meetingId: meeting.id,
+            coroinhaId: item.coroinhaId,
+            status: item.status,
+            notes: clean(item.notes),
+            recordedById: auth.id,
+          },
+          update: {
+            status: item.status,
+            notes: clean(item.notes),
+            recordedById: auth.id,
+          },
+        })
+      }
+      if (body.markHeld !== false && meeting.status === 'SCHEDULED') {
+        await tx.meeting.update({ where: { id: meeting.id }, data: { status: 'HELD' } })
+      }
+    })
+    await audit(app.prisma, {
+      userId: auth.id,
+      action: 'meeting.attendance',
+      entity: 'Meeting',
+      entityId: meeting.id,
+      ip: request.ip,
+    })
     return { ok: true }
   })
 }

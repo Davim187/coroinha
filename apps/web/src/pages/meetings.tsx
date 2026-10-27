@@ -1,9 +1,9 @@
-import type { MeetingDetail, MeetingSummary, Paginated } from '@coroinha/contracts'
-import { MEETING_STATUS_LABELS } from '@coroinha/contracts'
+import type { MeetingAttendanceView, MeetingDetail, MeetingSummary, Paginated } from '@coroinha/contracts'
+import { ATTENDANCE_LABELS, ATTENDANCE_STATUSES, MEETING_STATUS_LABELS, type AttendanceStatus } from '@coroinha/contracts'
 import { meetingBodySchema } from '@coroinha/validators'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 import type { Resolver } from 'react-hook-form'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -27,28 +27,69 @@ type FormValues = {
   participants: { name: string; userId?: string | null }[]
 }
 
+function monthLabel(month: string) {
+  const [year, monthNumber] = month.split('-').map(Number)
+  const first = new Date(year || 2000, (monthNumber || 1) - 1, 1)
+  return first.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+}
+
 export function AgendaPage() {
   const [month, setMonth] = useState(currentMonth())
   const [day, setDay] = useState('')
+  const [anchored, setAnchored] = useState(false)
   const query = useQuery({
     queryKey: ['meetings', month],
     queryFn: () => api<Paginated<MeetingSummary>>(`/api/meetings?month=${month}&pageSize=100`),
+  })
+  const overview = useQuery({
+    queryKey: ['meetings', 'overview'],
+    queryFn: () => api<Paginated<MeetingSummary>>('/api/meetings?pageSize=100'),
   })
   const [year, monthNumber] = month.split('-').map(Number)
   const first = new Date(year || 2000, (monthNumber || 1) - 1, 1)
   const days = new Date(year || 2000, monthNumber || 1, 0).getDate()
   const cells = [...Array(first.getDay()).fill(null), ...Array.from({ length: days }, (_, index) => index + 1)]
   const meetings = query.data?.items ?? []
-  const visible = day ? meetings.filter((item) => item.date.endsWith(day.padStart(2, '0')) && item.date.startsWith(month)) : meetings
+  const visible = day ? meetings.filter((item) => item.date === `${month}-${day}`) : meetings
+  const otherMonths = Array.from(
+    new Set((overview.data?.items ?? []).map((item) => item.date.slice(0, 7)).filter((value) => value !== month)),
+  ).sort()
+
+  useEffect(() => {
+    if (anchored || !overview.isSuccess || query.isLoading) return
+    if ((query.data?.items.length ?? 0) > 0) {
+      setAnchored(true)
+      return
+    }
+    const today = todayInput()
+    const all = overview.data?.items ?? []
+    if (all.length === 0) {
+      setAnchored(true)
+      return
+    }
+    const upcoming = all.filter((item) => item.date >= today).sort((a, b) => a.date.localeCompare(b.date))
+    const target = upcoming[0] ?? [...all].sort((a, b) => b.date.localeCompare(a.date))[0]
+    if (target) {
+      setMonth(target.date.slice(0, 7))
+      setDay('')
+    }
+    setAnchored(true)
+  }, [anchored, overview.data, overview.isSuccess, query.data, query.isLoading])
+
+  function changeMonth(next: string) {
+    setMonth(next)
+    setDay('')
+  }
+
   return (
     <div>
-      <PageHeader title="Agenda e reuniões" description="Encontre a próxima reunião e consulte a pauta." actions={<Can permission="meetings.write"><Button asChild><Link to="/agenda/nova">Nova reunião</Link></Button></Can>} />
+      <PageHeader title="Agenda e reuniões" description="Encontre a próxima reunião, consulte a pauta e registre a presença." actions={<Can permission="meetings.write"><Button asChild><Link to="/agenda/nova">Nova reunião</Link></Button></Can>} />
       <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
         <Panel className="p-4">
           <div className="mb-3 flex items-center justify-between">
-            <Button variant="outline" size="sm" onClick={() => setMonth(shiftMonth(month, -1))}>Anterior</Button>
-            <p className="font-display text-2xl capitalize">{first.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</p>
-            <Button variant="outline" size="sm" onClick={() => setMonth(shiftMonth(month, 1))}>Próximo</Button>
+            <Button variant="outline" size="sm" onClick={() => changeMonth(shiftMonth(month, -1))}>Anterior</Button>
+            <p className="font-display text-2xl capitalize">{monthLabel(month)}</p>
+            <Button variant="outline" size="sm" onClick={() => changeMonth(shiftMonth(month, 1))}>Próximo</Button>
           </div>
           <div className="grid grid-cols-7 gap-1 text-center text-xs text-muted">
             {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}
@@ -58,17 +99,44 @@ export function AgendaPage() {
               const iso = value ? `${month}-${String(value).padStart(2, '0')}` : ''
               const count = meetings.filter((item) => item.date === iso).length
               const soon = meetings.some((item) => item.date === iso && item.soon)
+              const selected = day === String(value).padStart(2, '0')
               return (
-                <button key={index} disabled={!value} className={`h-12 rounded-lg text-sm ${day === String(value).padStart(2, '0') ? 'bg-navy-900 text-white' : 'bg-paper'} ${soon ? 'ring-1 ring-gold-500' : ''}`} onClick={() => setDay(value ? String(value).padStart(2, '0') : '')}>
+                <button
+                  key={index}
+                  disabled={!value}
+                  className={`h-12 rounded-lg text-sm ${selected ? 'bg-navy-900 text-white' : 'bg-paper'} ${soon ? 'ring-1 ring-gold-500' : ''}`}
+                  onClick={() => {
+                    if (!value) return
+                    const next = String(value).padStart(2, '0')
+                    setDay((current) => (current === next ? '' : next))
+                  }}
+                >
                   {value}
                   {count ? <span className="block text-[10px]">{count}</span> : null}
                 </button>
               )
             })}
           </div>
+          {day ? (
+            <div className="mt-3">
+              <Button variant="outline" size="sm" onClick={() => setDay('')}>Ver todas do mês</Button>
+            </div>
+          ) : null}
+          {otherMonths.length ? (
+            <div className="mt-4 border-t border-line pt-3">
+              <p className="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">Outros meses com reuniões</p>
+              <div className="flex flex-wrap gap-2">
+                {otherMonths.map((value) => (
+                  <Button key={value} variant="outline" size="sm" onClick={() => changeMonth(value)}>
+                    <span className="capitalize">{monthLabel(value)}</span>
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </Panel>
         <div>
-          <QueryBoundary isLoading={query.isLoading} isError={query.isError} error={query.error} refetch={() => query.refetch()} isEmpty={visible.length === 0} empty={<EmptyState title="Nenhuma reunião neste período" description="Agende a próxima reunião da coordenação." />}>
+          <QueryBoundary isLoading={query.isLoading} isError={query.isError} error={query.error} refetch={() => query.refetch()} isEmpty={visible.length === 0} empty={<EmptyState title="Nenhuma reunião neste período" description={otherMonths.length ? 'Use os botões de outros meses ou navegue no calendário.' : 'Agende a próxima reunião da coordenação.'} />}>
             <div className="grid gap-3">
               {visible.map((item) => (
                 <Link key={item.id} to={`/agenda/${item.id}`} className="rounded-2xl border border-line bg-white p-4 hover:border-gold-500">
@@ -76,6 +144,7 @@ export function AgendaPage() {
                     <div>
                       <p className="font-semibold">{item.title}</p>
                       <p className="text-sm text-muted">{formatDate(item.date)} · {item.startTime}–{item.endTime}</p>
+                      <p className="mt-1 text-xs text-muted">Presença {item.attendanceCounted}/{item.attendanceTotal}</p>
                     </div>
                     <StatusBadge value={item.status} label={MEETING_STATUS_LABELS[item.status]} />
                   </div>
@@ -135,7 +204,7 @@ export function MeetingFormPage() {
           <div className="md:col-span-2"><Field label="Observações" error={form.formState.errors.notes?.message}><Textarea {...form.register('notes')} /></Field></div>
           <div className="md:col-span-2"><Field label="Decisões ou encaminhamentos" error={form.formState.errors.decisions?.message}><Textarea {...form.register('decisions')} /></Field></div>
           <div className="md:col-span-2">
-            <Field label="Participantes">
+            <Field label="Participantes da coordenação">
               <div className="flex gap-2">
                 <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Nome do participante" />
                 <Button type="button" variant="outline" onClick={() => {
@@ -168,9 +237,31 @@ export function MeetingDetailPage() {
     <QueryBoundary isLoading={query.isLoading} isError={query.isError} error={query.error} refetch={() => query.refetch()}>
       {meeting ? (
         <div className="mx-auto max-w-3xl">
-          <PageHeader title={meeting.title} description={`${formatDate(meeting.date)} · ${meeting.startTime}–${meeting.endTime}${meeting.location ? ` · ${meeting.location}` : ''}`} actions={<Can permission="meetings.write"><Button asChild variant="outline"><Link to={`/agenda/${meeting.id}/editar`}>Editar</Link></Button>{meeting.status !== 'CANCELLED' ? <ConfirmButton title="Cancelar reunião" description="A reunião permanece no histórico como cancelada." confirmLabel="Cancelar reunião" danger onConfirm={async () => { await api(`/api/meetings/${meeting.id}/cancel`, { method: 'POST' }); await client.invalidateQueries({ queryKey: ['meeting', id] }); toast.success('Reunião cancelada.') }}><Button variant="outline">Cancelar</Button></ConfirmButton> : null}<ConfirmButton title="Excluir reunião" description="A reunião sai da agenda e deixa de aparecer no calendário." confirmLabel="Excluir" danger onConfirm={async () => { try { await api(`/api/meetings/${meeting.id}`, { method: 'DELETE' }); await client.invalidateQueries({ queryKey: ['meetings'] }); toast.success('Reunião excluída.'); navigate('/agenda') } catch (error) { toast.error(error instanceof ApiError ? error.message : 'Não foi possível excluir a reunião.') } }}><Button variant="outline" type="button">Excluir</Button></ConfirmButton></Can>} />
+          <PageHeader
+            title={meeting.title}
+            description={`${formatDate(meeting.date)} · ${meeting.startTime}–${meeting.endTime}${meeting.location ? ` · ${meeting.location}` : ''}`}
+            actions={
+              <Can permission="meetings.write">
+                <Button asChild variant="outline"><Link to={`/agenda/${meeting.id}/editar`}>Editar</Link></Button>
+                {meeting.status !== 'CANCELLED' ? (
+                  <Button asChild><Link to={`/agenda/${meeting.id}/presenca`}>Presença</Link></Button>
+                ) : null}
+                {meeting.status !== 'CANCELLED' ? (
+                  <ConfirmButton title="Cancelar reunião" description="A reunião permanece no histórico como cancelada." confirmLabel="Cancelar reunião" danger onConfirm={async () => { await api(`/api/meetings/${meeting.id}/cancel`, { method: 'POST' }); await client.invalidateQueries({ queryKey: ['meeting', id] }); toast.success('Reunião cancelada.') }}>
+                    <Button variant="outline">Cancelar</Button>
+                  </ConfirmButton>
+                ) : null}
+                <ConfirmButton title="Excluir reunião" description="A reunião sai da agenda e deixa de aparecer no calendário." confirmLabel="Excluir" danger onConfirm={async () => { try { await api(`/api/meetings/${meeting.id}`, { method: 'DELETE' }); await client.invalidateQueries({ queryKey: ['meetings'] }); toast.success('Reunião excluída.'); navigate('/agenda') } catch (error) { toast.error(error instanceof ApiError ? error.message : 'Não foi possível excluir a reunião.') } }}>
+                  <Button variant="outline" type="button">Excluir</Button>
+                </ConfirmButton>
+              </Can>
+            }
+          />
           {meeting.soon ? <p className="mb-4 text-sm font-semibold text-gold-700">Esta reunião está próxima.</p> : null}
-          <StatusBadge value={meeting.status} label={MEETING_STATUS_LABELS[meeting.status]} />
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <StatusBadge value={meeting.status} label={MEETING_STATUS_LABELS[meeting.status]} />
+            <span className="text-sm text-muted">Presença {meeting.attendanceCounted}/{meeting.attendanceTotal}</span>
+          </div>
           <Panel className="mt-4 p-5">
             <p className="text-xs font-semibold tracking-wide text-muted uppercase">Responsável</p>
             <p>{meeting.organizer.name}</p>
@@ -178,11 +269,90 @@ export function MeetingDetailPage() {
             <p className="whitespace-pre-wrap">{meeting.agenda || 'Sem pauta registrada.'}</p>
             <p className="mt-4 text-xs font-semibold tracking-wide text-muted uppercase">Decisões</p>
             <p className="whitespace-pre-wrap">{meeting.decisions || 'Nenhum encaminhamento registrado.'}</p>
-            <p className="mt-4 text-xs font-semibold tracking-wide text-muted uppercase">Participantes</p>
+            <p className="mt-4 text-xs font-semibold tracking-wide text-muted uppercase">Participantes da coordenação</p>
             <p>{meeting.participants.map((item) => item.name).join(', ') || 'Não informados.'}</p>
           </Panel>
         </div>
       ) : null}
+    </QueryBoundary>
+  )
+}
+
+type AttendanceItem = {
+  coroinhaId: string
+  coroinhaName: string
+  status: AttendanceStatus | null
+  notes: string | null
+}
+
+export function MeetingAttendancePage() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const client = useQueryClient()
+  const query = useQuery({
+    queryKey: ['meeting-attendance', id],
+    queryFn: () => api<MeetingAttendanceView>(`/api/meetings/${id}/attendance`),
+  })
+  const [items, setItems] = useState<AttendanceItem[]>([])
+  useEffect(() => {
+    if (query.data) setItems(query.data.items)
+  }, [query.data])
+  const save = useMutation({
+    mutationFn: () =>
+      api(`/api/meetings/${id}/attendance`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          markHeld: true,
+          items: items.map((item) => ({ coroinhaId: item.coroinhaId, status: item.status, notes: item.notes })),
+        }),
+      }),
+    onSuccess: async () => {
+      toast.success('Presença da reunião registrada.')
+      await client.invalidateQueries({ queryKey: ['meeting', id] })
+      await client.invalidateQueries({ queryKey: ['meetings'] })
+      await client.invalidateQueries({ queryKey: ['meeting-attendance', id] })
+      navigate(`/agenda/${id}`)
+    },
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Não foi possível salvar a presença.'),
+  })
+  const complete = items.length > 0 && items.every((item) => item.status)
+  return (
+    <QueryBoundary isLoading={query.isLoading} isError={query.isError} error={query.error} refetch={() => query.refetch()}>
+      <PageHeader
+        title="Presença da reunião"
+        description={query.data ? `${query.data.title} · ${formatDate(query.data.date)}` : 'Marque a situação de cada coroinha.'}
+        actions={<Button variant="outline" asChild><Link to={`/agenda/${id}`}>Voltar</Link></Button>}
+      />
+      {items.length === 0 ? (
+        <Panel className="p-6 text-sm text-muted">Não há coroinhas ativos para registrar presença.</Panel>
+      ) : (
+        <div className="grid gap-3">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setItems((current) => current.map((item) => ({ ...item, status: 'PRESENT' })))}>Marcar todos presentes</Button>
+            <Button variant="outline" onClick={() => setItems((current) => current.map((item) => ({ ...item, status: 'ABSENT' })))}>Marcar todos ausentes</Button>
+          </div>
+          {items.map((item) => (
+            <Panel key={item.coroinhaId} className="p-4">
+              <p className="font-semibold">{item.coroinhaName}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {ATTENDANCE_STATUSES.map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    className={`rounded-full px-3 py-1.5 text-sm font-semibold ${item.status === status ? 'bg-navy-900 text-white' : 'bg-paper text-navy-900'}`}
+                    onClick={() => setItems((current) => current.map((row) => row.coroinhaId === item.coroinhaId ? { ...row, status } : row))}
+                  >
+                    {ATTENDANCE_LABELS[status]}
+                  </button>
+                ))}
+              </div>
+            </Panel>
+          ))}
+          <Button disabled={!complete || save.isPending} onClick={() => save.mutate()}>
+            {complete ? 'Salvar presença' : 'Selecione a situação de todos'}
+          </Button>
+        </div>
+      )}
     </QueryBoundary>
   )
 }

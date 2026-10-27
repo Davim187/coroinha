@@ -19,6 +19,7 @@ beforeEach(async () => {
       "FinancialTransaction",
       "FundraisingParticipant",
       "FundraisingCampaign",
+      "MeetingAttendance",
       "MeetingParticipant",
       "Meeting",
       "AuditLog",
