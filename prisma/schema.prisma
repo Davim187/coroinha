@@ -413,9 +413,10 @@ model AuditLog {
 }
 
 model Setting {
-  id                         String   @id @default("default")
-  parishName                 String   @default("Pastoral de Coroinhas")
-  celebrationDurationMinutes Int      @default(90)
-  balanceWindowDays          Int      @default(60)
-  updatedAt                  DateTime @updatedAt
+  id                          String   @id @default("default")
+  parishName                  String   @default("Pastoral de Coroinhas")
+  celebrationDurationMinutes  Int      @default(90)
+  balanceWindowDays           Int      @default(60)
+  lastAttendanceReportMonth   String?
+  updatedAt                   DateTime @updatedAt
 }

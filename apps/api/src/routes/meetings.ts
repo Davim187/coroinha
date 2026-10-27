@@ -4,7 +4,9 @@ import type { Prisma } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
 import { addDays, asDate, clean, dateOnly, todayInBrazil } from '../domain.js'
 import { ApiError, notFound } from '../errors.js'
-import { actor, assertCan, audit, paging, parse } from '../http.js'
+import { actor, assertCan, audit, paging, parse, sendPdf } from '../http.js'
+import { buildMeetingReport, meetingSnapshot } from '../services/meeting-report.js'
+import { renderMeetingReportPdf } from '../services/report-pdf.js'
 
 const meetingInclude = {
   organizer: true,
@@ -141,8 +143,15 @@ export async function meetingRoutes(app: FastifyInstance) {
         },
       },
     })
-    await audit(app.prisma, { userId: auth.id, action: 'meeting.create', entity: 'Meeting', entityId: created.id, ip: request.ip })
     const meeting = await loadMeeting(app, created.id)
+    await audit(app.prisma, {
+      userId: auth.id,
+      action: 'meeting.create',
+      entity: 'Meeting',
+      entityId: created.id,
+      ip: request.ip,
+      metadata: { after: meetingSnapshot(meeting), summary: `${auth.name} criou a reunião.` },
+    })
     return present(meeting, await activeCoroinhaCount(app))
   })
 
@@ -154,13 +163,37 @@ export async function meetingRoutes(app: FastifyInstance) {
     return present(meeting, await activeCoroinhaCount(app))
   })
 
+  app.get('/api/meetings/:id/report', async (request) => {
+    const auth = actor(request)
+    assertCan(auth, 'meetings.read')
+    const params = request.params as { id: string }
+    const report = await buildMeetingReport(app.prisma, params.id)
+    if (!report) throw notFound('Reunião não encontrada.')
+    return report
+  })
+
+  app.get('/api/meetings/:id/report.pdf', async (request, reply) => {
+    const auth = actor(request)
+    assertCan(auth, 'meetings.read')
+    const params = request.params as { id: string }
+    const report = await buildMeetingReport(app.prisma, params.id)
+    if (!report) throw notFound('Reunião não encontrada.')
+    const settings = await app.prisma.setting.findUniqueOrThrow({ where: { id: 'default' } })
+    const buffer = await renderMeetingReportPdf(settings.parishName, report)
+    return sendPdf(reply, `reuniao-${report.date}.pdf`, buffer)
+  })
+
   app.patch('/api/meetings/:id', async (request) => {
     const auth = actor(request)
     assertCan(auth, 'meetings.write')
     const params = request.params as { id: string }
     const body = parse(meetingBodySchema, request.body)
-    const current = await app.prisma.meeting.findUnique({ where: { id: params.id } })
+    const current = await app.prisma.meeting.findUnique({
+      where: { id: params.id },
+      include: { participants: true },
+    })
     if (!current) throw notFound('Reunião não encontrada.')
+    const before = meetingSnapshot(current)
     const names = new Set<string>()
     const participants = body.participants ?? []
     for (const participant of participants) {
@@ -191,8 +224,15 @@ export async function meetingRoutes(app: FastifyInstance) {
         },
       })
     })
-    await audit(app.prisma, { userId: auth.id, action: 'meeting.update', entity: 'Meeting', entityId: current.id, ip: request.ip })
     const meeting = await loadMeeting(app, current.id)
+    await audit(app.prisma, {
+      userId: auth.id,
+      action: 'meeting.update',
+      entity: 'Meeting',
+      entityId: current.id,
+      ip: request.ip,
+      metadata: { before, after: meetingSnapshot(meeting), summary: `${auth.name} atualizou a reunião.` },
+    })
     return present(meeting, await activeCoroinhaCount(app))
   })
 
@@ -200,11 +240,22 @@ export async function meetingRoutes(app: FastifyInstance) {
     const auth = actor(request)
     assertCan(auth, 'meetings.write')
     const params = request.params as { id: string }
-    const current = await app.prisma.meeting.findUnique({ where: { id: params.id } })
+    const current = await app.prisma.meeting.findUnique({
+      where: { id: params.id },
+      include: { participants: true },
+    })
     if (!current) throw notFound('Reunião não encontrada.')
+    const before = meetingSnapshot(current)
     await app.prisma.meeting.update({ where: { id: current.id }, data: { status: 'CANCELLED' } })
-    await audit(app.prisma, { userId: auth.id, action: 'meeting.cancel', entity: 'Meeting', entityId: current.id, ip: request.ip })
     const meeting = await loadMeeting(app, current.id)
+    await audit(app.prisma, {
+      userId: auth.id,
+      action: 'meeting.cancel',
+      entity: 'Meeting',
+      entityId: current.id,
+      ip: request.ip,
+      metadata: { before, after: meetingSnapshot(meeting), summary: `${auth.name} cancelou a reunião.` },
+    })
     return present(meeting, await activeCoroinhaCount(app))
   })
 
@@ -304,6 +355,15 @@ export async function meetingRoutes(app: FastifyInstance) {
       entity: 'Meeting',
       entityId: meeting.id,
       ip: request.ip,
+      metadata: {
+        summary: `${auth.name} registrou a presença de ${body.items.length} coroinhas.`,
+        after: {
+          present: body.items.filter((item) => item.status === 'PRESENT').length,
+          absent: body.items.filter((item) => item.status === 'ABSENT').length,
+          late: body.items.filter((item) => item.status === 'LATE').length,
+          justified: body.items.filter((item) => item.status === 'JUSTIFIED').length,
+        },
+      },
     })
     return { ok: true }
   })

@@ -11,7 +11,7 @@ import { toast } from 'sonner'
 import { Can, ConfirmButton, EmptyState, Field, PageHeader, Panel, QueryBoundary, StatusBadge } from '@/components/common'
 import { Button } from '@/components/ui/button'
 import { Input, Select, Textarea } from '@/components/ui/input'
-import { api, ApiError } from '@/lib/api'
+import { api, ApiError, downloadFile } from '@/lib/api'
 import { currentMonth, formatDate, shiftMonth, todayInput } from '@/lib/format'
 
 type FormValues = {
@@ -241,20 +241,32 @@ export function MeetingDetailPage() {
             title={meeting.title}
             description={`${formatDate(meeting.date)} · ${meeting.startTime}–${meeting.endTime}${meeting.location ? ` · ${meeting.location}` : ''}`}
             actions={
-              <Can permission="meetings.write">
-                <Button asChild variant="outline"><Link to={`/agenda/${meeting.id}/editar`}>Editar</Link></Button>
-                {meeting.status !== 'CANCELLED' ? (
-                  <Button asChild><Link to={`/agenda/${meeting.id}/presenca`}>Presença</Link></Button>
-                ) : null}
-                {meeting.status !== 'CANCELLED' ? (
-                  <ConfirmButton title="Cancelar reunião" description="A reunião permanece no histórico como cancelada." confirmLabel="Cancelar reunião" danger onConfirm={async () => { await api(`/api/meetings/${meeting.id}/cancel`, { method: 'POST' }); await client.invalidateQueries({ queryKey: ['meeting', id] }); toast.success('Reunião cancelada.') }}>
-                    <Button variant="outline">Cancelar</Button>
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    downloadFile(`/api/meetings/${meeting.id}/report.pdf`, `reuniao-${meeting.date}.pdf`).catch((error) =>
+                      toast.error(error instanceof ApiError ? error.message : 'Não foi possível gerar o relatório.'),
+                    )
+                  }
+                >
+                  Relatório
+                </Button>
+                <Can permission="meetings.write">
+                  <Button asChild variant="outline"><Link to={`/agenda/${meeting.id}/editar`}>Editar</Link></Button>
+                  {meeting.status !== 'CANCELLED' ? (
+                    <Button asChild><Link to={`/agenda/${meeting.id}/presenca`}>Presença</Link></Button>
+                  ) : null}
+                  {meeting.status !== 'CANCELLED' ? (
+                    <ConfirmButton title="Cancelar reunião" description="A reunião permanece no histórico como cancelada." confirmLabel="Cancelar reunião" danger onConfirm={async () => { await api(`/api/meetings/${meeting.id}/cancel`, { method: 'POST' }); await client.invalidateQueries({ queryKey: ['meeting', id] }); toast.success('Reunião cancelada.') }}>
+                      <Button variant="outline">Cancelar</Button>
+                    </ConfirmButton>
+                  ) : null}
+                  <ConfirmButton title="Excluir reunião" description="A reunião sai da agenda e deixa de aparecer no calendário." confirmLabel="Excluir" danger onConfirm={async () => { try { await api(`/api/meetings/${meeting.id}`, { method: 'DELETE' }); await client.invalidateQueries({ queryKey: ['meetings'] }); toast.success('Reunião excluída.'); navigate('/agenda') } catch (error) { toast.error(error instanceof ApiError ? error.message : 'Não foi possível excluir a reunião.') } }}>
+                    <Button variant="outline" type="button">Excluir</Button>
                   </ConfirmButton>
-                ) : null}
-                <ConfirmButton title="Excluir reunião" description="A reunião sai da agenda e deixa de aparecer no calendário." confirmLabel="Excluir" danger onConfirm={async () => { try { await api(`/api/meetings/${meeting.id}`, { method: 'DELETE' }); await client.invalidateQueries({ queryKey: ['meetings'] }); toast.success('Reunião excluída.'); navigate('/agenda') } catch (error) { toast.error(error instanceof ApiError ? error.message : 'Não foi possível excluir a reunião.') } }}>
-                  <Button variant="outline" type="button">Excluir</Button>
-                </ConfirmButton>
-              </Can>
+                </Can>
+              </>
             }
           />
           {meeting.soon ? <p className="mb-4 text-sm font-semibold text-gold-700">Esta reunião está próxima.</p> : null}

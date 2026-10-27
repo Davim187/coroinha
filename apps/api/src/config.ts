@@ -40,6 +40,13 @@ export const env = {
   adminEmail: process.env.ADMIN_EMAIL?.trim().toLowerCase() || '',
   adminPassword: process.env.ADMIN_PASSWORD || '',
   webDist: process.env.WEB_DIST?.trim() || '',
+  smtpHost: process.env.SMTP_HOST?.trim() || '',
+  smtpPort: Number(process.env.SMTP_PORT ?? 587),
+  smtpSecure: process.env.SMTP_SECURE === 'true',
+  smtpUser: process.env.SMTP_USER?.trim() || '',
+  smtpPass: process.env.SMTP_PASS || '',
+  smtpFrom: process.env.SMTP_FROM?.trim() || '',
+  monthlyReportDay: Number(process.env.MONTHLY_REPORT_DAY ?? 1),
 }
 
 if (env.jwtAccessSecret.length < 16 || env.jwtRefreshSecret.length < 16) {

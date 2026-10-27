@@ -11,8 +11,23 @@ import { reportQuerySchema } from '@coroinha/validators'
 import type { Prisma } from '@prisma/client'
 import Decimal from 'decimal.js'
 import type { FastifyInstance } from 'fastify'
-import { asDate, dateOnly, money } from '../domain.js'
-import { actor, assertCan, csv, parse, sendCsv } from '../http.js'
+import { z } from 'zod'
+import { asDate, dateOnly, money, todayInBrazil } from '../domain.js'
+import { ApiError } from '../errors.js'
+import { actor, assertCan, audit, csv, parse, sendCsv, sendPdf } from '../http.js'
+import { sendMonthlyAttendanceReport } from '../jobs/monthly-report.js'
+import {
+  buildMonthlyAttendanceReport,
+  isValidMonth,
+  previousMonth,
+} from '../services/attendance-report.js'
+import { mailConfigured } from '../services/mail.js'
+import { renderMonthlyAttendancePdf } from '../services/report-pdf.js'
+
+const monthlyQuerySchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  format: z.enum(['json', 'csv', 'pdf']).default('json'),
+})
 
 function range(query: { from?: string; to?: string }) {
   if (!query.from && !query.to) return undefined
@@ -239,5 +254,76 @@ export async function reportRoutes(app: FastifyInstance) {
       )
     }
     return { items }
+  })
+
+  app.get('/api/reports/presencas-mensal', async (request, reply) => {
+    const auth = actor(request)
+    assertCan(auth, 'reports.read')
+    assertCan(auth, 'scales.read')
+    const query = parse(monthlyQuerySchema, request.query)
+    const month = query.month ?? previousMonth(asDate(todayInBrazil()))
+    if (!isValidMonth(month)) throw new ApiError(422, 'VALIDATION', 'Informe o mês no formato AAAA-MM.')
+    const report = await buildMonthlyAttendanceReport(app.prisma, month)
+    if (query.format === 'pdf') {
+      const settings = await app.prisma.setting.findUniqueOrThrow({ where: { id: 'default' } })
+      const buffer = await renderMonthlyAttendancePdf(settings.parishName, report)
+      return sendPdf(reply, `presencas-${month}.pdf`, buffer)
+    }
+    if (query.format === 'csv') {
+      return sendCsv(
+        reply,
+        `presencas-mensal-${month}.csv`,
+        csv(
+          ['Coroinha', 'Funções', 'Presentes', 'Ausentes', 'Atrasos', 'Justificadas', 'Sem registro', 'Taxa de presença %'],
+          report.people.map((item) => [
+            item.name,
+            item.assignments,
+            item.present,
+            item.absent,
+            item.late,
+            item.justified,
+            item.unrecorded,
+            item.presenceRate ?? '',
+          ]),
+        ),
+      )
+    }
+    return report
+  })
+
+  app.post('/api/reports/presencas-mensal/enviar', async (request) => {
+    const auth = actor(request)
+    assertCan(auth, 'reports.read')
+    assertCan(auth, 'scales.read')
+    if (!mailConfigured()) {
+      throw new ApiError(503, 'SMTP', 'Configure SMTP_HOST e SMTP_FROM para enviar o relatório por e-mail.')
+    }
+    const body = parse(z.object({ month: z.string().regex(/^\d{4}-\d{2}$/).optional() }), request.body ?? {})
+    const month = body.month ?? previousMonth(asDate(todayInBrazil()))
+    if (!isValidMonth(month)) throw new ApiError(422, 'VALIDATION', 'Informe o mês no formato AAAA-MM.')
+    const result = await sendMonthlyAttendanceReport(app.prisma, month)
+    if (!result.ok) {
+      throw new ApiError(409, 'REPORT', result.reason === 'no-users' ? 'Não há usuários ativos para receber o e-mail.' : 'Não foi possível enviar o relatório.')
+    }
+    await audit(app.prisma, {
+      userId: auth.id,
+      action: 'report.attendance.email',
+      entity: 'Report',
+      entityId: month,
+      ip: request.ip,
+      metadata: { recipients: result.recipients, month },
+    })
+    return { ok: true, month, recipients: result.recipients, mailConfigured: true }
+  })
+
+  app.get('/api/reports/presencas-mensal/status', async (request) => {
+    const auth = actor(request)
+    assertCan(auth, 'reports.read')
+    const settings = await app.prisma.setting.findUniqueOrThrow({ where: { id: 'default' } })
+    return {
+      mailConfigured: mailConfigured(),
+      lastAttendanceReportMonth: settings.lastAttendanceReportMonth,
+      suggestedMonth: previousMonth(asDate(todayInBrazil())),
+    }
   })
 }

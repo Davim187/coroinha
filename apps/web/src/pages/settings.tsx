@@ -47,6 +47,7 @@ const actions: Record<string, string> = {
   'meeting.cancel': 'Cancelou uma reunião',
   'meeting.delete': 'Excluiu uma reunião',
   'meeting.attendance': 'Registrou presença de reunião',
+  'report.attendance.email': 'Enviou o relatório mensal de presença',
   'settings.update': 'Alterou as configurações',
 }
 
